@@ -25,10 +25,10 @@
 <li><span style="font-weight: 300;"> pxeclient (клиент, на котором будет проводиться установка)</span></li>
 </ul>
 <p><span style="font-weight: 300;">Vagrantfile взят из методички и изменен в соответствии с обходным решением. Файл прикладываю сюда.</span></p>
-IMG
+<img width="862" height="955" alt="image" src="https://github.com/user-attachments/assets/294aedc4-a890-4028-8236-8bb8584c5112" />
 <p>&nbsp;</p>
-<p><span style="font-weight: 300;">Данный Vagrantfile развернёт сервер pxeserver, настроит его через Ansible, и далее развернёт клиента pxeclient, который попробует загрузиться через pxe. Из-за тайм-аута настройки команда Vagrant up закончится ошибкой.</span></p>
-<p><span style="font-weight: 300;">В Vagrantfile сразу добавлен запуск Ansible-плейбука provision.yml для настройки сервера.</span></p>
+<p><span style="font-weight: 300;">Данный Vagrantfile развернёт сервер pxeserver, настроит его через Ansible, и далее развернёт клиента pxeclient, который попробует загрузиться через pxe.</span></p>
+<p><span style="font-weight: 300;">В Vagrantfile сразу добавлен запуск Ansible-плейбука provision.yaml для настройки сервера. Плейбук со всеми необходимыми файлами находится в каталоге <strong>~/task20/ansible</strong>, файлы прикладываю сюда же.</span></p>
 
 
 

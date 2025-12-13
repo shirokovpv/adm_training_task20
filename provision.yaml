@@ -1,0 +1,202 @@
+---
+- name: Install dnsmasq and configure pxe # Ставим dnsmasq и конфигурируем pxe
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Ensure dnsmasq package is installed # Ставим dnsmasq
+      ansible.builtin.apt:
+        name: dnsmasq
+        state: present
+        update_cache: yes
+
+    - name: Disable systemd-resolved service # Отключаем systemd-resolved
+      ansible.builtin.systemd:
+        name: systemd-resolved
+        state: stopped
+        enabled: no
+
+    - name: Disable ufw service # Отключаем фаерволл
+      ansible.builtin.systemd:
+        name: ufw
+        state: stopped
+        enabled: no
+        
+    - name: Start and enable dnsmasq service # Включаем dnsmasq
+      ansible.builtin.service:
+        name: dnsmasq
+        state: started
+        enabled: true
+
+    - name: Configure pxe with a custom config file # Заполняем конфиг из шаблона (шаблон в этом же каталоге с плейбуком)
+      ansible.builtin.template:
+        src: pxe.conf.j2
+        dest: /etc/dnsmasq.d/pxe.conf 
+        owner: root
+        group: root
+        mode: '0644'
+        
+- name: Configure DNS # Конфигурирование DNS
+  hosts: pxeserver
+  become: true 
+  tasks:
+    - name: Update /etc/resolv.conf with new nameservers # Добавление первичного DNS-сервера
+      ansible.builtin.lineinfile:
+        path: /etc/resolv.conf
+        regexp: '^nameserver'
+        line: 'nameserver 8.8.8.8' 
+        state: present
+        create: true
+      
+    - name: Add a secondary nameserver # Добавление вторичного DNS-сервера
+      ansible.builtin.lineinfile:
+        path: /etc/resolv.conf
+        insertafter: '^nameserver 8.8.8.8' 
+        line: 'nameserver 8.8.4.4' 
+        state: present
+      
+- name: Create directory TFTP # Создаем каталог для файлов TFTP
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Ensure ansible directory exists
+      ansible.builtin.file:
+        path: /srv/tftp
+        state: directory
+        owner: root 
+        group: root 
+
+- name: Download tar.gz using wget # Качаем файл для сетевой установки Ubuntu 24.04
+  hosts: pxeserver
+  become: true
+  tasks: 
+    - name: Download tar
+      ansible.builtin.command: wget -O /tmp/resolute-netboot-amd64.tar.gz http://cdimage.ubuntu.com/ubuntu-server/daily-live/current/resolute-netboot-amd64.tar.gz
+      args:
+        creates: /tmp/resolute-netboot-amd64.tar.gz # Запуск, если файл не существует
+
+- name: Extract tar.gz file # Распаковываем скачанный файл
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Unpack
+      unarchive:
+        src: /tmp/resolute-netboot-amd64.tar.gz # Что
+        dest: /srv/tftp/     # Куда
+        remote_src: yes # Без этого не работало. Почему remote, когда файл на этом компе? Шаманство, не иначе...
+        owner: root 
+        group: root
+
+- name: Install apache2 # Ставим веб-сервер
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Ensure apache2 package is installed # Ставим
+      ansible.builtin.apt:
+        name: apache2
+        state: present
+        update_cache: yes
+    - name: Ensure apache2 service is running and enabled # Включаем
+      ansible.builtin.service:
+        name: apache2
+        state: started
+        enabled: true
+
+- name: Create directory for images # Создаем каталог для iso-образов для установки по сети
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Ensure ansible directory exists
+      ansible.builtin.file:
+        path: /srv/images
+        state: directory
+        owner: root 
+        group: root 
+
+- name: Download image using wget # Качаем файл образа
+  hosts: pxeserver
+  become: true
+  tasks: 
+    - name: Download iso
+      ansible.builtin.command: wget -O /srv/images/resolute-live-server-amd64.iso http://cdimage.ubuntu.com/ubuntu-server/daily-live/current/resolute-live-server-amd64.iso
+      args:
+        creates: /srv/images/resolute-live-server-amd64.iso # Запуск, если файл не существует
+
+- name: Configure apache2 # Конфигурируем веб-сервер
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Configure apache2 with a custom config file # Заполняем конфиг из шаблона (шаблон в этом же каталоге с плейбуком)
+      ansible.builtin.template:
+        src: ks-server.conf.j2
+        dest: /etc/apache2/sites-available/ks-server.conf 
+        owner: root
+        group: root
+        mode: '0644'
+
+- name: Enable Apache site # Включаем сайт
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Enable site
+      command: a2ensite ks-server
+      args:
+        creates: /etc/apache2/sites-enabled/ks-server.conf
+
+- name: Configure pxelinux # Конфигурируем pxelinux.cfg
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Configure pxelinux with a custom config file # Заполняем конфиг из шаблона (шаблон в этом же каталоге с плейбуком)
+      ansible.builtin.template:
+        src: pxelinux.cfg.j2
+        dest: /srv/tftp/amd64/pxelinux.cfg/default 
+        owner: root
+        group: root
+        mode: '0644'
+
+- name: Create directory for autoinstall # Создаем каталог для автоматической установки
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Ensure ansible directory exists
+      ansible.builtin.file:
+        path: /srv/ks
+        state: directory
+        owner: root 
+        group: root 
+
+- name: Configure user-data # Данные для автоустановки
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Configure user-data with a custom config file # Заполняем конфиг из шаблона (шаблон в этом же каталоге с плейбуком)
+      ansible.builtin.template:
+        src: user-data.j2
+        dest: /srv/ks/user-data 
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Create file meta-data # Создаем файл с метаданными
+      ansible.builtin.file:
+        path: /srv/ks/meta-data
+        state: touch # Не будем добавлять дополнительную информацию, файл пустой
+        mode: '0644'
+
+- name: Restart dnsmasq # Перезапуск dnsmasq
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Restart dnsmasq
+      ansible.builtin.service:
+        name: dnsmasq
+        state: restarted
+
+- name: Restart Apache2 # Перезапуск веб-сервера
+  hosts: pxeserver
+  become: true
+  tasks:
+    - name: Restart Apache2
+      ansible.builtin.service:
+        name: apache2
+        state: restarted
+
